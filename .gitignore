@@ -14,3 +14,7 @@ wheels/
 .direnv
 .autoenv
 .autoleave
+
+
+# chat history
+.chat
