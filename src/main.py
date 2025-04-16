@@ -1,11 +1,11 @@
 import os
 from groq import Groq
-from groq.types.chat import ChatCompletionMessageParam, ChatCompletionSystemMessageParam, ChatCompletionAssistantMessageParam, ChatCompletionToolMessageParam, ChatCompletionMessageToolCallParam
-from groq.types.chat.chat_completion_chunk import ChoiceDeltaToolCallFunction, ChoiceDeltaToolCall
+from groq.types.chat import ChatCompletionMessageParam, ChatCompletionSystemMessageParam, ChatCompletionAssistantMessageParam, ChatCompletionToolMessageParam, ChatCompletionUserMessageParam, ChatCompletionMessageToolCallParam
+from groq.types.chat.chat_completion_chunk import ChoiceDeltaToolCallFunction, ChoiceDeltaToolCall, ChatCompletionChunk
 from easyrepl import REPL
 from rich import print
 import json
-from typing import cast
+from typing import Callable, Literal, Generator
 
 from archytas.tools import PythonTool
 
@@ -13,8 +13,25 @@ from archytas.tools import PythonTool
 
 import pdb
 
-
-python_tool = PythonTool()
+# TODO: this is a pretty hacky/manual way for managing tools
+#       eventually replace with a proper software engineering solution
+done_working_schema = {
+    "type": "function",
+    "function": {
+        "name": "done_working",
+        "description": "Indicates that the agent is done answering the user's query",
+        "parameters": {
+            'type': 'object',
+            'properties': {
+                'reason': {
+                    'type': 'string',
+                    'description': 'The reason you are done working'
+                }
+            },
+        },
+        "required": []
+    }
+}
 
 python_tool_schema = {
     "type": "function",
@@ -33,38 +50,71 @@ python_tool_schema = {
         }
     }
 }
+python_tool = PythonTool() # e.g. whether or not to instantiate the tool should be left to the library user
+tool_fn_map: dict[str, Callable] = {
+    'PythonTool.run': python_tool.run,
+    'done_working': lambda *a, **kw: print(f'agent called DONE_WORKING tool. {a=}, {kw=}')
+}
 
 
+SYSTEM_MESSAGE = '''\
+You are a helpful assistant. When the user asks you a question, if useful, you can make use of the tools available to you to answer.
+The system will show you the result of any tool calls, and let you continue working until you decide you are done. 
+To indicate you are done, you should call the done_working tool. The system will not show the user any of your work until you call the done_working tool, so don't forget to call it when you are done!
+'''
 
-def main():
-    client = Groq()
-    messages: list[ChatCompletionMessageParam] = []
-    for query in REPL(history_file='.chat'):
-        messages.append(
-            {
-                "role": "user",
-                "content": query,
-            }
-        )
-        gen = client.chat.completions.create(
-            messages=messages,
-            model="deepseek-r1-distill-llama-70b",
-            stream=True,
-            # stream=False,
-            tools=[python_tool_schema],
-            tool_choice="auto"
-        )
+class GroqReActAgent():
+    def __init__(self, model:Literal['deepseek-r1-distill-llama-70b'], tool_schemas:list[dict]):
+        self.messages = [ChatCompletionSystemMessageParam(role='system', content=SYSTEM_MESSAGE)]
+        self.tool_schemas = tool_schemas
+        self.model = model
+        self.client = Groq()
 
+        # TODO: could take functions for doing side effects on each chunk
+    
+    def ReAct(self, query: str):
+        self.messages.append(ChatCompletionUserMessageParam(role="user", content=query))
+        
+        while True:
+        
+            gen = self.client.chat.completions.create(
+                messages=self.messages,
+                model=self.model,
+                stream=True,
+                tools=self.tool_schemas,
+                tool_choice="auto"
+            )
 
-        # results = []
+            # process the stream (combining into a single message)
+            reasoning, message = self.process_stream(gen)
+            self.messages.append(message)
+            
+            # process each of the tool calls, and show the agent the results
+            # TODO: handle tool errors
+            tool_call_results = [self.exec_tool_call(tool_call) for tool_call in message["tool_calls"]]
+            self.messages.extend(tool_call_results)
+
+            # handle any special tool calls
+            # handle exiting the loop
+            for tool_call in message["tool_calls"]:
+                if tool_call.function.name == 'done_working':
+                    print(f'[green]{tool_call.function.arguments}[green]', end='', flush=True)
+                    break # skip the else clause, causing us to break out of the react loop
+            else:
+                # continue the react loop
+                continue
+            
+            # exit the react loop
+            break
+
+    def process_stream(self, gen: Generator[ChatCompletionChunk, None, None]) -> tuple[str, ChatCompletionAssistantMessageParam]:
+
         reasoning_chunks: list[str] = []
         content_chunks: list[str] = []
         tool_calls = []
-        tool_call_results: list[dict] = []
-        # TBD about how function calls work/are different from tool calls...
-        # actually the api says function calls is deprecated in favor of tool calls
 
         for chunk in gen:
+            
             # done streaming
             if chunk.choices[0].finish_reason is not None:
                 print(f'[red]{chunk.choices[0].finish_reason}[red]', end='', flush=True)
@@ -81,27 +131,11 @@ def main():
                 reasoning_chunks.append(delta.reasoning)
             
             elif delta.tool_calls is not None:
-                for tool_call in delta.tool_calls:
-                    #tool_call: ChatCompletionMessageToolCallParam
-                    res = exec_tool_call(tool_call)
-                    tool_calls.append(tool_call)
-                    tool_call_results.append(res)
-                    # pdb.set_trace()
-                    # f = tool_call.function
-                    # if f is None:
-                    #     print(f'[red]Tool Call with no tool name: {tool_call}[red]', end='', flush=True)
-                    #     continue
+                tool_calls.extend(delta.tool_calls)
 
-                    # print(f'[blue]{f.name}[blue]', end='', flush=True)
-                    # arguments = {}
-                    # if f.arguments is not None:
-                    #     arguments = json.loads(f.arguments)
-                    #     print(f'[yellow]{arguments}[yellow]', end='', flush=True)
-                    # res = exec_tool_call(f.name, arguments)
-
-            elif delta.function_call is not None:
-                print(f'[red]Function call is currently not supported[red]', end='', flush=True)
-                print(f'[yellow]{delta.function_call}[yellow]', end='', flush=True)
+            # elif delta.function_call is not None:
+            #     print(f'[red]Function call is deprecated[red]', end='', flush=True)
+            #     print(f'[yellow]{delta.function_call}[yellow]', end='', flush=True)
             
             else: ... # nothing to do
 
@@ -110,67 +144,47 @@ def main():
         # reconstruct the agent message and append it to the list of messages
         content = ''.join(content_chunks)
         reasoning = ''.join(reasoning_chunks)
-        message: ChatCompletionAssistantMessageParam = {
-            'role': 'assistant',
-            'content': content,
-            'tool_calls': tool_calls,
-        }
-        messages.append(message)
-        for tool_call_result in tool_call_results:
-            messages.append(tool_call_result)
+        message = ChatCompletionAssistantMessageParam(role = 'assistant', content = content, tool_calls = tool_calls)
 
-        # pdb.set_trace()
-        # ...
+        return reasoning, message
 
-        # TODO: this is where we need to deal with looping into the ReAct loop based on what tool was selected
-        # make a final response
-        final_response = client.chat.completions.create(
-            messages=messages,
-            model="deepseek-r1-distill-llama-70b",
-            tools=[python_tool_schema],
-            tool_choice="auto"
-        )
-        print(final_response.choices[0].message.content) 
+    def exec_tool_call(self, tool_call: ChoiceDeltaToolCall) -> ChatCompletionToolMessageParam:
+        try:
+            fn = tool_fn_map[tool_call.function.name]
+        except KeyError:
+            # TODO: apparently you can return a message with "is_error": true, but I'm not seeing it in the docs/types
+            raise Exception(f"Unknown tool name: {tool_call.function.name}")
+        
+        print(f'[blue]{tool_call.function.name}[blue]', end='', flush=True)
+
+        arguments = {}
+        if tool_call.function.arguments is not None:
+            arguments = json.loads(tool_call.function.arguments)
+        
+        print(f'[yellow]{arguments}[yellow]', end='\n', flush=True)
+
+        # TODO: this assume super simple function signatures containing only primitive types
+        result = fn(**arguments)
+
+        print(f'[green]{result}[green]', end='\n', flush=True)
+
+        res = ChatCompletionToolMessageParam(role='tool', content=str(result), tool_call_id=tool_call.id)
+
+        return res
 
 
-from typing import Callable
-tool_fn_map: dict[str, Callable] = {
-    'PythonTool.run': python_tool.run,
-}
-
-
-# TBD on the type of the return here...
-def exec_tool_call(tool_call: ChoiceDeltaToolCall):
-    try:
-        fn = tool_fn_map[tool_call.function.name]
-    except KeyError:
-        raise Exception(f"Unknown tool name: {tool_call.function.name}")
+def main():
     
-    print(f'[blue]{tool_call.function.name}[blue]', end='', flush=True)
-
-    arguments = {}
-    if tool_call.function.arguments is not None:
-        arguments = json.loads(tool_call.function.arguments)
+    agent = GroqReActAgent(
+        model='deepseek-r1-distill-llama-70b',
+        tool_schemas=[python_tool_schema, done_working_schema]
+    )    
+    for query in REPL(history_file='.chat'):
+        agent.ReAct(query)
     
-    print(f'[yellow]{arguments}[yellow]', end='\n', flush=True)
-
-    # TODO: this assume super simple function signatures containing only primitive types
-    result = fn(**arguments)
-
-    print(f'[green]{result}[green]', end='\n', flush=True)
-
-    res = {'role': 'tool', 'content': str(result), 'tool_call_id': tool_call.id}
-
-    return res
-
-    # pdb.set_trace()
-    # if name == 'PythonTool.run':
-    #     # since python tool takes only string args, we can skip argument parsing
-    #     res = python_tool.run(**arguments)
-    #     print(f'[green]{res}[green]', end='', flush=True)
-    #     return res
-    # else:
-    #     raise Exception(f"Unknown tool name: {name}")
+    
+    return
+    
 
 if __name__ == "__main__":
     main()
