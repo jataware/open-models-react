@@ -64,7 +64,7 @@ To indicate you are done, you should call the done_working tool. The system will
 '''
 
 class GroqReActAgent():
-    def __init__(self, model:Literal['deepseek-r1-distill-llama-70b'], tool_schemas:list[dict]):
+    def __init__(self, model:Literal['deepseek-r1-distill-llama-70b', 'meta-llama/llama-4-maverick-17b-128e-instruct'], tool_schemas:list[dict]):
         self.messages = [ChatCompletionSystemMessageParam(role='system', content=SYSTEM_MESSAGE)]
         self.tool_schemas = tool_schemas
         self.model = model
@@ -176,7 +176,7 @@ class GroqReActAgent():
 def main():
     
     agent = GroqReActAgent(
-        model='deepseek-r1-distill-llama-70b',
+        model='meta-llama/llama-4-maverick-17b-128e-instruct',
         tool_schemas=[python_tool_schema, done_working_schema]
     )    
     for query in REPL(history_file='.chat'):
