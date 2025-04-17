@@ -13,25 +13,25 @@ from archytas.tools import PythonTool
 
 import pdb
 
-# TODO: this is a pretty hacky/manual way for managing tools
-#       eventually replace with a proper software engineering solution
-done_working_schema = {
-    "type": "function",
-    "function": {
-        "name": "done_working",
-        "description": "Indicates that the agent is done answering the user's query",
-        "parameters": {
-            'type': 'object',
-            'properties': {
-                'reason': {
-                    'type': 'string',
-                    'description': 'The reason you are done working'
-                }
-            },
-        },
-        "required": []
-    }
-}
+# # TODO: this is a pretty hacky/manual way for managing tools
+# #       eventually replace with a proper software engineering solution
+# done_working_schema = {
+#     "type": "function",
+#     "function": {
+#         "name": "done_working",
+#         "description": "Indicates that the agent is done answering the user's query",
+#         "parameters": {
+#             'type': 'object',
+#             'properties': {
+#                 'reason': {
+#                     'type': 'string',
+#                     'description': 'The reason you are done working'
+#                 }
+#             },
+#         },
+#         "required": []
+#     }
+# }
 
 python_tool_schema = {
     "type": "function",
@@ -57,15 +57,22 @@ tool_fn_map: dict[str, Callable] = {
 }
 
 
-SYSTEM_MESSAGE = '''\
-You are a helpful assistant. When the user asks you a question, if useful, you can make use of the tools available to you to answer.
-The system will show you the result of any tool calls, and let you continue working until you decide you are done. 
-To indicate you are done, you should call the done_working tool. The system will not show the user any of your work until you call the done_working tool, so don't forget to call it when you are done!
-'''
+# SYSTEM_MESSAGE = '''\
+# You are a helpful assistant. When the user asks you a question, if useful, you can make use of the tools available to you to answer.
+# The system will show you the result of any tool calls, and let you continue working until you decide you are done. 
+# To indicate you are done, you should call the done_working tool. The system will not show the user any of your work until you call the done_working tool, so don't forget to call it when you are done!
+# '''
+
+Model = Literal[
+    'deepseek-r1-distill-llama-70b',
+    'meta-llama/llama-4-maverick-17b-128e-instruct',
+    'llama-3.3-70b-versatile',
+
+]
 
 class GroqReActAgent():
-    def __init__(self, model:Literal['deepseek-r1-distill-llama-70b', 'meta-llama/llama-4-maverick-17b-128e-instruct'], tool_schemas:list[dict]):
-        self.messages = [ChatCompletionSystemMessageParam(role='system', content=SYSTEM_MESSAGE)]
+    def __init__(self, model:Model, tool_schemas:list[dict]):
+        self.messages = []#[ChatCompletionSystemMessageParam(role='system', content=SYSTEM_MESSAGE)]
         self.tool_schemas = tool_schemas
         self.model = model
         self.client = Groq()
@@ -85,27 +92,35 @@ class GroqReActAgent():
                 tool_choice="auto"
             )
 
-            # process the stream (combining into a single message)
+            # process the stream (combining all chunks into a single message)
+            print(f'[blue]<new message>[blue]', flush=True)
             reasoning, message = self.process_stream(gen)
             self.messages.append(message)
-            
+
             # process each of the tool calls, and show the agent the results
             # TODO: handle tool errors
             tool_call_results = [self.exec_tool_call(tool_call) for tool_call in message["tool_calls"]]
             self.messages.extend(tool_call_results)
 
-            # handle any special tool calls
-            # handle exiting the loop
-            for tool_call in message["tool_calls"]:
-                if tool_call.function.name == 'done_working':
-                    print(f'[green]{tool_call.function.arguments}[green]', end='', flush=True)
-                    break # skip the else clause, causing us to break out of the react loop
-            else:
-                # continue the react loop
-                continue
+
+            # exit react loop if tool message was empty
+            if not message['tool_calls']:# and not message["content"]:
+                print(f'[yellow]Breaking out of react loop[yellow]', flush=True)
+                break
             
-            # exit the react loop
-            break
+
+            # # handle any special tool calls
+            # # handle exiting the loop
+            # for tool_call in message["tool_calls"]:
+            #     if tool_call.function.name == 'done_working':
+            #         print(f'[green]{tool_call.function.arguments}[green]', end='', flush=True)
+            #         break # skip the else clause, causing us to break out of the react loop
+            # else:
+            #     # continue the react loop
+            #     continue
+            
+            # # exit the react loop
+            # break
 
     def process_stream(self, gen: Generator[ChatCompletionChunk, None, None]) -> tuple[str, ChatCompletionAssistantMessageParam]:
 
@@ -117,7 +132,7 @@ class GroqReActAgent():
             
             # done streaming
             if chunk.choices[0].finish_reason is not None:
-                print(f'[red]{chunk.choices[0].finish_reason}[red]', end='', flush=True)
+                print(f'[red]<finish_reason {chunk.choices[0].finish_reason} />[red]', end='', flush=True)
                 break
 
             delta = chunk.choices[0].delta
@@ -166,7 +181,7 @@ class GroqReActAgent():
         # TODO: this assume super simple function signatures containing only primitive types
         result = fn(**arguments)
 
-        print(f'[green]{result}[green]', end='\n', flush=True)
+        print(f'[green](tool results){result}[green]', end='\n', flush=True)
 
         res = ChatCompletionToolMessageParam(role='tool', content=str(result), tool_call_id=tool_call.id)
 
@@ -176,8 +191,8 @@ class GroqReActAgent():
 def main():
     
     agent = GroqReActAgent(
-        model='meta-llama/llama-4-maverick-17b-128e-instruct',
-        tool_schemas=[python_tool_schema, done_working_schema]
+        model='llama-3.3-70b-versatile',
+        tool_schemas=[python_tool_schema]
     )    
     for query in REPL(history_file='.chat'):
         agent.ReAct(query)
