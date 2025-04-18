@@ -1,5 +1,5 @@
 import os
-from groq import Groq
+from groq import Groq, APIError
 from groq.types.chat import ChatCompletionMessageParam, ChatCompletionSystemMessageParam, ChatCompletionAssistantMessageParam, ChatCompletionToolMessageParam, ChatCompletionUserMessageParam, ChatCompletionMessageToolCallParam
 from groq.types.chat.chat_completion_chunk import ChoiceDeltaToolCallFunction, ChoiceDeltaToolCall, ChatCompletionChunk
 from easyrepl import REPL
@@ -14,25 +14,6 @@ from archytas.tools import PythonTool
 import pdb
 
 # # TODO: this is a pretty hacky/manual way for managing tools
-# #       eventually replace with a proper software engineering solution
-# done_working_schema = {
-#     "type": "function",
-#     "function": {
-#         "name": "done_working",
-#         "description": "Indicates that the agent is done answering the user's query",
-#         "parameters": {
-#             'type': 'object',
-#             'properties': {
-#                 'reason': {
-#                     'type': 'string',
-#                     'description': 'The reason you are done working'
-#                 }
-#             },
-#         },
-#         "required": []
-#     }
-# }
-
 python_tool_schema = {
     "type": "function",
     "function": {
@@ -53,15 +34,13 @@ python_tool_schema = {
 python_tool = PythonTool() # e.g. whether or not to instantiate the tool should be left to the library user
 tool_fn_map: dict[str, Callable] = {
     'PythonTool.run': python_tool.run,
-    'done_working': lambda *a, **kw: print(f'agent called DONE_WORKING tool. {a=}, {kw=}')
 }
 
 
-# SYSTEM_MESSAGE = '''\
-# You are a helpful assistant. When the user asks you a question, if useful, you can make use of the tools available to you to answer.
-# The system will show you the result of any tool calls, and let you continue working until you decide you are done. 
-# To indicate you are done, you should call the done_working tool. The system will not show the user any of your work until you call the done_working tool, so don't forget to call it when you are done!
-# '''
+SYSTEM_MESSAGE = '''\
+You are a helpful assistant. When the user asks you a question, if useful, you can make use of the tools available to you to answer.
+The system will show you the result of any tool calls, and let you continue working until you decide you are done. 
+'''
 
 Model = Literal[
     'deepseek-r1-distill-llama-70b',
@@ -72,7 +51,7 @@ Model = Literal[
 
 class GroqReActAgent():
     def __init__(self, model:Model, tool_schemas:list[dict]):
-        self.messages = []#[ChatCompletionSystemMessageParam(role='system', content=SYSTEM_MESSAGE)]
+        self.messages = [ChatCompletionSystemMessageParam(role='system', content=SYSTEM_MESSAGE)]
         self.tool_schemas = tool_schemas
         self.model = model
         self.client = Groq()
@@ -99,8 +78,15 @@ class GroqReActAgent():
 
             # process each of the tool calls, and show the agent the results
             # TODO: handle tool errors
-            tool_call_results = [self.exec_tool_call(tool_call) for tool_call in message["tool_calls"]]
-            self.messages.extend(tool_call_results)
+            # tool_call_results = [self.exec_tool_call(tool_call) for tool_call in message["tool_calls"]]
+            # self.messages.extend(tool_call_results)
+            for tool_call in message['tool_calls']:
+                try:
+                    result = self.exec_tool_call(tool_call)
+                    self.messages.append(result)
+                except Exception as e:
+                    print(f'[red]Error in tool call: {e}[red]', end='', flush=True)
+                    self.messages.append(ChatCompletionToolMessageParam(role='tool', content=str(e), tool_call_id=tool_call.id))
 
 
             # exit react loop if tool message was empty
@@ -128,31 +114,32 @@ class GroqReActAgent():
         content_chunks: list[str] = []
         tool_calls = []
 
-        for chunk in gen:
-            
-            # done streaming
-            if chunk.choices[0].finish_reason is not None:
-                print(f'[red]<finish_reason {chunk.choices[0].finish_reason} />[red]', end='', flush=True)
-                break
 
-            delta = chunk.choices[0].delta
-            
-            if delta.content is not None:
-                print(delta.content, end='', flush=True)
-                content_chunks.append(delta.content)
-            
-            elif delta.reasoning is not None:
-                print(f'[green]{delta.reasoning}[green]', end='', flush=True)
-                reasoning_chunks.append(delta.reasoning)
-            
-            elif delta.tool_calls is not None:
-                tool_calls.extend(delta.tool_calls)
+        try:
+            for chunk in gen:
+                
+                # done streaming
+                if chunk.choices[0].finish_reason is not None:
+                    print(f'[red]<finish_reason {chunk.choices[0].finish_reason} />[red]', end='', flush=True)
+                    break
 
-            # elif delta.function_call is not None:
-            #     print(f'[red]Function call is deprecated[red]', end='', flush=True)
-            #     print(f'[yellow]{delta.function_call}[yellow]', end='', flush=True)
-            
-            else: ... # nothing to do
+                delta = chunk.choices[0].delta
+                
+                if delta.content is not None:
+                    print(delta.content, end='', flush=True)
+                    content_chunks.append(delta.content)
+                
+                elif delta.reasoning is not None:
+                    print(f'[green]{delta.reasoning}[green]', end='', flush=True)
+                    reasoning_chunks.append(delta.reasoning)
+                
+                elif delta.tool_calls is not None:
+                    tool_calls.extend(delta.tool_calls)
+
+                else: ... # nothing to do
+        except APIError as e:
+            print(f'[red]Error in stream: {e}[red]', end='', flush=True)
+            content_chunks.append(f'\nMESSAGE ERROR: {e}')
 
         print()
 
@@ -164,6 +151,15 @@ class GroqReActAgent():
         return reasoning, message
 
     def exec_tool_call(self, tool_call: ChoiceDeltaToolCall) -> ChatCompletionToolMessageParam:
+        """Safe tool call interface. Failures are caught and converted to a message"""
+        try:
+            return self._exec_tool_call(tool_call)
+        except Exception as e:
+            print(f'[red]Error in tool call: {e}[red]', end='', flush=True)
+            return ChatCompletionToolMessageParam(role='tool', content=str(e), tool_call_id=tool_call.id)
+
+    def _exec_tool_call(self, tool_call: ChoiceDeltaToolCall) -> ChatCompletionToolMessageParam:
+        """Inner attempt to call a tool. can raise exceptions"""
         try:
             fn = tool_fn_map[tool_call.function.name]
         except KeyError:
