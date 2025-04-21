@@ -184,6 +184,25 @@ class GroqReActAgent():
         return res
 
 
+def claude_version():
+    from archytas.react import ReActAgent
+    from archytas.models.anthropic import AnthropicModel
+
+    agent = ReActAgent(
+        model=AnthropicModel({
+            'model_name':'claude-3-7-sonnet-latest',
+            'api_key':os.environ.get('ANTHROPIC_API_KEY'),
+        }),
+        tools=[python_tool],
+        allow_ask_user=False,
+        verbose=True
+    )
+
+    for query in REPL(history_file='.chat'):
+        res = agent.react(query)
+        print(f'[green]{res}[green]', end='\n', flush=True)
+
+
 def main():
     
     agent = GroqReActAgent(
@@ -194,8 +213,8 @@ def main():
         agent.ReAct(query)
     
     
-    return
     
 
 if __name__ == "__main__":
-    main()
+    # main()
+    claude_version()
