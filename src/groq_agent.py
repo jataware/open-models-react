@@ -13,6 +13,21 @@ from archytas.tools import PythonTool
 
 import pdb
 
+
+{
+    'description': 'Runs python code in a python environment.\n\nThe environment is persistent between runs, so any variables created will be available in subsequent runs.\nThe only visible effects of this tool are from output to stdout/stderr. If you want to view a result, you MUST print it.\n\nArgs:\n    code (str): The code to run\n\nReturns:\n    str: The stdout output of the code',
+    'properties': {
+        'code': {
+            'title': 'Code',
+            'type': 'string'
+        }
+    },
+    'required': ['code'],
+    'title': 'run',
+    'type': 'object'
+}
+
+
 # # TODO: this is a pretty hacky/manual way for managing tools
 python_tool_schema = {
     "type": "function",
@@ -203,7 +218,7 @@ def claude_version():
         print(f'[green]{res}[green]', end='\n', flush=True)
 
 
-def main():
+def groq_version():
     
     agent = GroqReActAgent(
         model='llama-3.3-70b-versatile',
@@ -216,5 +231,5 @@ def main():
     
 
 if __name__ == "__main__":
-    # main()
-    claude_version()
+    groq_version()
+    # claude_version()

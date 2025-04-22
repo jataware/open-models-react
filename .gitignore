@@ -18,3 +18,7 @@ wheels/
 
 # chat history
 .chat
+
+
+# benchmark runs workspaces
+runs/
