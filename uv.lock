@@ -1914,6 +1914,7 @@ dependencies = [
     { name = "numpy", version = "2.2.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "pandas" },
     { name = "pillow" },
+    { name = "tqdm" },
     { name = "xarray" },
 ]
 
@@ -1936,6 +1937,7 @@ requires-dist = [
     { name = "numpy", specifier = ">=1.26.4" },
     { name = "pandas", specifier = ">=2.2.3" },
     { name = "pillow", specifier = ">=11.2.1" },
+    { name = "tqdm", specifier = ">=4.67.1" },
     { name = "xarray", specifier = ">=2025.3.1" },
 ]
 

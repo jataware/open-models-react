@@ -16,6 +16,7 @@ dependencies = [
     "numpy>=1.26.4",
     "pandas>=2.2.3",
     "pillow>=11.2.1",
+    "tqdm>=4.67.1",
     "xarray>=2025.3.1",
 ]
 
