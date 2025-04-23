@@ -1,14 +1,19 @@
 from typing import Literal, TypedDict
 from pathlib import Path
-from dataclasses import dataclass
 import json
 import hashlib
 from rich import print
 from functools import cache, partial
 from tqdm import tqdm
+import os
+
+from archytas.models.anthropic import AnthropicModel
+from archytas.models.openai import OpenAIModel
+from archytas.models.base import BaseArchytasModel
+from archytas.tools import PythonTool
+from archytas.react import ReActAgent
 
 from .groq_agent import GroqReActAgent, python_tool_schema
-from archytas.react import ReActAgent
 from .utils import move_to_isolated_dir, make_str_pathsafe, redirect_stdout
 
 import pdb
@@ -61,22 +66,41 @@ ModelResultMap = dict[str, list[Result]]  # map from model name to all runs resu
 TestCaseMap = dict[str, ModelResultMap]  # map from test case name to model result map
 
 
+groq_baseline_toolbox: list[dict] = [python_tool_schema]
+groq_tool_assisted_toolbox: list[dict] = [] # TODO: toolset for direct API access
+# TODO: also need hosted versions of these containing the archytas tools for the archytas version of the test
 
 
 Model = Literal[
     # 'gemma2-9b-it',
-    # 'llama-3.3-70b-versatile',
-    # 'llama-3.1-8b-instant',
+    'llama-3.3-70b-versatile',
+    'llama-3.1-8b-instant',
     # 'llama-guard-3-8b',
     # 'llama3-70b-8192',
     # 'llama3-8b-8192',
     # 'allam-2-7b',
     # 'deepseek-r1-distill-llama-70b',
-    'meta-llama/llama-4-maverick-17b-128e-instruct',
+    # 'meta-llama/llama-4-maverick-17b-128e-instruct',
     # 'meta-llama/llama-4-scout-17b-16e-instruct',
     # 'mistral-saba-24b',
     # 'qwen-qwq-32b',
 ]
+
+
+HostedModel = Literal[
+    # 'claude-3-7-sonnet-latest',
+    'gpt-4o',
+]
+Provider = Literal['ANTHROPIC', 'OPENAI']
+models_map: dict[HostedModel, tuple[type[BaseArchytasModel], Provider]] = {
+    'claude-3-7-sonnet-latest': (AnthropicModel, 'ANTHROPIC'),
+    'gpt-4o': (OpenAIModel, 'OPENAI'),
+}
+
+hosted_baseline_toolbox = [PythonTool]
+hosted_tool_assisted_toolbox = []  # TODO: toolset for direct API access
+
+
 
 
 @cache
@@ -99,6 +123,9 @@ def get_hosted_toolbox_map():
         BASELINE_TASK_PROMPT: hosted_baseline_toolbox,
         TOOL_ASSISTED_TASK_PROMPT: hosted_tool_assisted_toolbox,
     }
+
+
+
 
 
 def benchmark_suite(prompt:str, n_trials:int):
@@ -129,9 +156,6 @@ def benchmark_suite(prompt:str, n_trials:int):
 
 
 
-groq_baseline_toolbox: list[dict] = [python_tool_schema]
-groq_tool_assisted_toolbox: list[dict] = [] # TODO: toolset for direct API access
-# TODO: also need hosted versions of these containing the archytas tools for the archytas version of the test
 
 
 def groq_benchmark(model_name: Model, toolbox: list[dict], prompt: str):
@@ -144,28 +168,6 @@ def groq_benchmark(model_name: Model, toolbox: list[dict], prompt: str):
         autograde(Path.cwd(), model_name, prompt)
 
 
-
-
-
-
-
-from archytas.models.anthropic import AnthropicModel
-from archytas.models.openai import OpenAIModel
-from archytas.models.base import BaseArchytasModel
-from archytas.tools import PythonTool
-import os
-HostedModel = Literal[
-    'claude-3-7-sonnet-latest',
-    'gpt-4o',
-]
-Provider = Literal['ANTHROPIC', 'OPENAI']
-models_map: dict[HostedModel, tuple[type[BaseArchytasModel], Provider]] = {
-    'claude-3-7-sonnet-latest': (AnthropicModel, 'ANTHROPIC'),
-    'gpt-4o': (OpenAIModel, 'OPENAI'),
-}
-
-hosted_baseline_toolbox = [PythonTool]
-hosted_tool_assisted_toolbox = []  # TODO: toolset for direct API access
 
 def hosted_benchmark(model_name: HostedModel, toolbox: list, prompt: str):
     model_class, provider = models_map[model_name]
