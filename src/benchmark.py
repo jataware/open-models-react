@@ -93,13 +93,13 @@ Model = Literal[
 HostedModel = Literal[
     'claude-3-7-sonnet-latest',
     'gpt-4o',
-    'gemini-1.5-pro-001'
+    # 'gemini-1.5-pro'
 ]
 Provider = Literal['ANTHROPIC', 'OPENAI']
 models_map: dict[HostedModel, tuple[type[BaseArchytasModel], Provider]] = {
     'claude-3-7-sonnet-latest': (AnthropicModel, 'ANTHROPIC'),
     'gpt-4o': (OpenAIModel, 'OPENAI'),
-    'gemini-1.5-pro': (GeminiModel, 'GEMINI'),
+    # 'gemini-1.5-pro': (GeminiModel, 'GEMINI'),
 }
 
 hosted_baseline_toolbox = [PythonTool]
@@ -231,6 +231,7 @@ def groq_benchmark(model_name: Model, toolbox: list[dict], prompt: str):
 
 def hosted_benchmark(model_name: HostedModel, toolbox: list, prompt: str):
     model_class, provider = models_map[model_name]
+    pdb.set_trace()
 
     agent = ReActAgent(
         model=model_class({'model_name': model_name, 'api_key': os.environ.get(f'{provider}_API_KEY')}),
@@ -302,13 +303,16 @@ def autograde(workdir: Path, model_name: Model, prompt: str, error: Exception | 
 
 
 if __name__ == '__main__':
-    # plot_all_experiments(here / '../runs/results.json')
-    # exit(0)
+    plot_all_experiments(here / '../runs/results.json')
+    exit(0)
 
-    n_trials = 5 #10
-    benchmark_suite(prompt=BASELINE_TASK_PROMPT, n_trials=n_trials)
+    # n_trials = 5 #10
+    # benchmark_suite(prompt=BASELINE_TASK_PROMPT, n_trials=n_trials)
     # benchmark_suite(prompt=TOOL_ASSISTED_TASK_PROMPT, n_trials=n_trials)
     
     # DEBUG individual test runs
     # groq_benchmark('meta-llama/llama-4-maverick-17b-128e-instruct', groq_baseline_toolbox, BASELINE_TASK_PROMPT)
     # hosted_benchmark('gpt-4o', hosted_baseline_toolbox, BASELINE_TASK_PROMPT)
+
+    # TBD why not working...
+    # hosted_benchmark('gemini-1.5-pro', hosted_baseline_toolbox, BASELINE_TASK_PROMPT)
