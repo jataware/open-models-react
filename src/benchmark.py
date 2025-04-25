@@ -24,6 +24,8 @@ import pdb
 here = Path(__file__).parent
 api_docs = (here / '../apis/ECMWF_docs.md').read_text()
 
+
+# TODO: replace this with fetching the latest, and dynamically generating the hash for that one
 # this needs to be within about 2 days of today (because ECMWF doesn't keep older forecasts)
 current_date = '2025-04-22'  # Format: YYYYMMDD
 # sha256sum path/to/file
@@ -75,23 +77,23 @@ groq_tool_assisted_toolbox: list[dict] = [] # TODO: toolset for direct API acces
 
 
 Model = Literal[
-    'gemma2-9b-it',
-    'llama-3.3-70b-versatile',
-    'llama-3.1-8b-instant',
-    'llama-guard-3-8b',
-    'llama3-70b-8192',
-    'llama3-8b-8192',
-    'allam-2-7b',
-    'deepseek-r1-distill-llama-70b',
-    'meta-llama/llama-4-maverick-17b-128e-instruct',
-    'meta-llama/llama-4-scout-17b-16e-instruct',
+    # 'gemma2-9b-it',
+    # 'llama-3.3-70b-versatile',
+    # 'llama-3.1-8b-instant',
+    # 'llama-guard-3-8b',
+    # 'llama3-70b-8192',
+    # 'llama3-8b-8192',
+    # 'allam-2-7b',
+    # 'deepseek-r1-distill-llama-70b',
+    # 'meta-llama/llama-4-maverick-17b-128e-instruct',
+    # 'meta-llama/llama-4-scout-17b-16e-instruct',
     'mistral-saba-24b',
-    'qwen-qwq-32b',
+    # 'qwen-qwq-32b',
 ]
 
 
 HostedModel = Literal[
-    'claude-3-7-sonnet-latest',
+    # 'claude-3-7-sonnet-latest',
     'gpt-4o',
     # 'gemini-1.5-pro'
 ]
@@ -139,7 +141,7 @@ def get_plot_titles_map():
 
 
 
-def benchmark_suite(prompt:str, n_trials:int):
+def groq_benchmark_suite(prompt:str, n_trials:int):
     
     groq_toolbox = get_groq_toolbox_map()[prompt]
     for model_name in tqdm(Model.__args__, desc='Groq models'):
@@ -151,6 +153,7 @@ def benchmark_suite(prompt:str, n_trials:int):
                     pass
 
             
+def hosted_benchmark_suite(prompt:str, n_trials:int):
     
     hosted_toolbox = get_hosted_toolbox_map()[prompt]
     for model_name in tqdm(HostedModel.__args__, desc='Hosted models'):
@@ -162,8 +165,8 @@ def benchmark_suite(prompt:str, n_trials:int):
                     pass
 
     
-    # plot results
-    plot_all_experiments(here / '../runs/results.json')
+    # # plot results
+    # plot_all_experiments(here / '../runs/results.json')
 
 
 
@@ -196,12 +199,13 @@ def plot_all_experiments(results_path: Path):
         # Annotate each bar with n_success/total
         for bar, label in zip(bars, success_labels):
             height = bar.get_height()
-            print(f'{label} {height=}')
-            ax.annotate(label,
-                        xy=(bar.get_x() + bar.get_width() / 2, height / 2),
-                        xytext=(0, 3) if height == 0 else (0, -3), # offset
-                        textcoords="offset points",
-                        ha='center', va='bottom')
+            ax.annotate(
+                label,
+                xy=(bar.get_x() + bar.get_width() / 2, height / 2),
+                xytext=(0, 3) if height == 0 else (0, -3), # offset
+                textcoords="offset points",
+                ha='center', va='bottom'
+            )
 
         plt.tight_layout()
         # save the plot
@@ -231,7 +235,6 @@ def groq_benchmark(model_name: Model, toolbox: list[dict], prompt: str):
 
 def hosted_benchmark(model_name: HostedModel, toolbox: list, prompt: str):
     model_class, provider = models_map[model_name]
-    pdb.set_trace()
 
     agent = ReActAgent(
         model=model_class({'model_name': model_name, 'api_key': os.environ.get(f'{provider}_API_KEY')}),
@@ -303,11 +306,12 @@ def autograde(workdir: Path, model_name: Model, prompt: str, error: Exception | 
 
 
 if __name__ == '__main__':
-    plot_all_experiments(here / '../runs/results.json')
-    exit(0)
+    # plot_all_experiments(here / '../runs/results.json')
+    # exit(0)
 
-    # n_trials = 5 #10
-    # benchmark_suite(prompt=BASELINE_TASK_PROMPT, n_trials=n_trials)
+    n_trials = 1 #5 #10
+    # groq_benchmark_suite(prompt=BASELINE_TASK_PROMPT, n_trials=n_trials)
+    hosted_benchmark_suite(prompt=BASELINE_TASK_PROMPT, n_trials=n_trials)
     # benchmark_suite(prompt=TOOL_ASSISTED_TASK_PROMPT, n_trials=n_trials)
     
     # DEBUG individual test runs
