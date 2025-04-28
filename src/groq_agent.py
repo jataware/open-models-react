@@ -8,6 +8,7 @@ import json
 from typing import Callable, Literal, Generator
 
 from archytas.tools import PythonTool
+from .ecmwf import ecmwf_client
 
 
 
@@ -47,8 +48,57 @@ python_tool_schema = {
     }
 }
 python_tool = PythonTool() # e.g. whether or not to instantiate the tool should be left to the library user
+
+ecmwf_download_tool_schema = {
+    "type": "function",
+    "function": {
+        "name": "ecmwf_download",
+        "description": "Downloads a file from the ECMWF server",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "year": {
+                    "type": "int",
+                    "description": "Year of the forecast."
+                },
+                "month": {
+                    "type": "int",
+                    "description": "Month of the forecast."
+                },
+                "day": {
+                    "type": "int",
+                    "description": "Day of the forecast."
+                },
+                "hh": {
+                    "type": "str",
+                    "description": "Forecast start hour in the day, relative to UTC. Must be one of '00', '06', '12', or '18'."
+                },
+                "stream": {
+                    "type": "str",
+                    "description": "Stream type. Must be one of 'oper', 'enfo', 'waef', 'wave', 'scda', 'scwv', or 'mmsf'."
+                },
+                "step_size": {
+                    "type": "int",
+                    "description": "Forecast step size in hours."
+                },
+                "file_type": {
+                    "type": "str",
+                    "description": "Type of the file. Must be one of 'fc', 'ef', 'ep', or 'tf'."
+                },
+                "file_format": {
+                    "type": "str",
+                    "description": "Format of the file. Must be one of 'grib2' or 'bufr'."
+                },
+            },
+            'required': ['year', 'month', 'day', 'hh', 'stream', 'step_size', 'file_type', 'file_format'],
+        }
+    }
+}
+
+
 tool_fn_map: dict[str, Callable] = {
     'PythonTool.run': python_tool.run,
+    'ecmwf_download': ecmwf_client.download_forecast
 }
 
 

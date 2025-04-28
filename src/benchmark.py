@@ -15,7 +15,7 @@ from archytas.models.base import BaseArchytasModel
 from archytas.tools import PythonTool
 from archytas.react import ReActAgent
 
-from .groq_agent import GroqReActAgent, python_tool_schema
+from .groq_agent import GroqReActAgent, python_tool_schema, ecmwf_download_tool_schema
 from .utils import move_to_isolated_dir, make_str_pathsafe, redirect_stdout
 
 import pdb
@@ -25,16 +25,41 @@ here = Path(__file__).parent
 api_docs = (here / '../apis/ECMWF_docs.md').read_text()
 
 
-# TODO: replace this with fetching the latest, and dynamically generating the hash for that one
-# this needs to be within about 2 days of today (because ECMWF doesn't keep older forecasts)
-current_date = '2025-04-22'  # Format: YYYYMMDD
-# sha256sum path/to/file
-sha256sum = '6668c059283404b5dd39afdeff59c93acc1810c515a0fbad00329812b682be44'
-# stat -c %s path/to/file
-bytesize = 129056697
+# # TODO: replace this with fetching the latest, and dynamically generating the hash for that one
+# # this needs to be within about 2 days of today (because ECMWF doesn't keep older forecasts)
+# current_date = '2025-04-22'  # Format: YYYYMMDD
+# # sha256sum path/to/file
+# sha256sum = '6668c059283404b5dd39afdeff59c93acc1810c515a0fbad00329812b682be44'
+# # stat -c %s path/to/file
+# bytesize = 129056697
+from .ecmwf import ecmwf_client
+from datetime import datetime
+current_date = datetime.now().strftime('%Y-%m-%d')  # Format: YYYY-MM-DD
+year, month, day = map(int, current_date.split('-'))
+url = ecmwf_client.build_file_url(current_date.replace('-', ''), '06', 'ifs', '0p25', 'scda', '24h', 'fc', 'grib2')
+reference_path = here / '../runs/reference' / Path(url).name
+if not reference_path.exists():
+    print(f'[blue]Downloading ECMWF forecast for {current_date}... [blue]', end='', flush=True)
+    ecmwf_client.download_forecast(year, month, day, '06', 'scda', 24, 'fc', 'grib2')
+    # move the downloaded file to the reference path
+    download_path = Path.cwd() / reference_path.name
+    if not download_path.exists():
+        raise RuntimeError(f'Failed to download file. File not found: {download_path}')
+    download_path.rename(reference_path)
+    print(f'[green]Download complete: {reference_path}[green]', end='\n', flush=True)
+else:
+    print(f'using cached reference file: {reference_path}', end='\n', flush=True)
+sha256sum = hashlib.sha256(reference_path.read_bytes()).hexdigest()
+bytesize = reference_path.stat().st_size
+print(f'[green] Current file: {reference_path}[green]', end='\n', flush=True)
+print(f'[green] SHA256: {sha256sum}[green]', end='\n', flush=True)
+print(f'[green] Bytesize: {bytesize}[green]', end='\n', flush=True)
+
+
+
 
 BASELINE_TASK_PROMPT = f"""\
-Please download a short time forecast from ECMWF for the current date {current_date}.
+Please download a short time forecast (scda) from ECMWF for the current date {current_date}.
 The forecast should start at 06:00 UTC and have a step size of 24 hours.
 The forecast should be in grib2 format and saved in the current directory.
 
@@ -45,7 +70,7 @@ Here is the documentation for using the ECMWF API:\n{api_docs}
 # An easy way to do this is by checking the file size, which should be on the order of 100 MB
 
 TOOL_ASSISTED_TASK_PROMPT = f"""\
-Please download a short time forecast from ECMWF for the current date {current_date}.
+Please download a short time forecast (scda) from ECMWF for the current date {current_date}.
 The forecast should start at 06:00 UTC and have a step size of 24 hours.
 The forecast should be in grib2 format and saved in the current directory.
 
@@ -72,28 +97,27 @@ TestCaseMap = dict[str, ModelResultMap]  # map from test case name to model resu
 
 
 groq_baseline_toolbox: list[dict] = [python_tool_schema]
-groq_tool_assisted_toolbox: list[dict] = [] # TODO: toolset for direct API access
-# TODO: also need hosted versions of these containing the archytas tools for the archytas version of the test
+groq_tool_assisted_toolbox: list[dict] = [ecmwf_download_tool_schema]
 
 
 Model = Literal[
-    # 'gemma2-9b-it',
-    # 'llama-3.3-70b-versatile',
-    # 'llama-3.1-8b-instant',
-    # 'llama-guard-3-8b',
-    # 'llama3-70b-8192',
-    # 'llama3-8b-8192',
-    # 'allam-2-7b',
-    # 'deepseek-r1-distill-llama-70b',
-    # 'meta-llama/llama-4-maverick-17b-128e-instruct',
-    # 'meta-llama/llama-4-scout-17b-16e-instruct',
+    'gemma2-9b-it',
+    'llama-3.3-70b-versatile',
+    'llama-3.1-8b-instant',
+    # 'llama-guard-3-8b', # doesn't support tool calls
+    'llama3-70b-8192',
+    'llama3-8b-8192',
+    # 'allam-2-7b',       # doesn't support tool calls
+    'deepseek-r1-distill-llama-70b',
+    'meta-llama/llama-4-maverick-17b-128e-instruct',
+    'meta-llama/llama-4-scout-17b-16e-instruct',
     'mistral-saba-24b',
-    # 'qwen-qwq-32b',
+    'qwen-qwq-32b',
 ]
 
 
 HostedModel = Literal[
-    # 'claude-3-7-sonnet-latest',
+    'claude-3-7-sonnet-latest',
     'gpt-4o',
     # 'gemini-1.5-pro'
 ]
@@ -105,7 +129,7 @@ models_map: dict[HostedModel, tuple[type[BaseArchytasModel], Provider]] = {
 }
 
 hosted_baseline_toolbox = [PythonTool]
-hosted_tool_assisted_toolbox = []  # TODO: toolset for direct API access
+hosted_tool_assisted_toolbox = [ecmwf_client.download_forecast]
 
 
 
@@ -309,10 +333,11 @@ if __name__ == '__main__':
     # plot_all_experiments(here / '../runs/results.json')
     # exit(0)
 
-    n_trials = 1 #5 #10
+    n_trials = 5 #10
     # groq_benchmark_suite(prompt=BASELINE_TASK_PROMPT, n_trials=n_trials)
-    hosted_benchmark_suite(prompt=BASELINE_TASK_PROMPT, n_trials=n_trials)
-    # benchmark_suite(prompt=TOOL_ASSISTED_TASK_PROMPT, n_trials=n_trials)
+    # hosted_benchmark_suite(prompt=BASELINE_TASK_PROMPT, n_trials=n_trials)
+    groq_benchmark_suite(prompt=TOOL_ASSISTED_TASK_PROMPT, n_trials=n_trials)
+    # hosted_benchmark_suite(prompt=TOOL_ASSISTED_TASK_PROMPT, n_trials=n_trials)
     
     # DEBUG individual test runs
     # groq_benchmark('meta-llama/llama-4-maverick-17b-128e-instruct', groq_baseline_toolbox, BASELINE_TASK_PROMPT)
