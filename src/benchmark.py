@@ -65,7 +65,8 @@ The forecast should be in grib2 format and saved in the current directory.
 
 After downloading the data, please verify it was downloaded successfully.
 
-Here is the documentation for using the ECMWF API:\n{api_docs}
+Here is the documentation for using the ECMWF API:
+{api_docs}
 """
 # An easy way to do this is by checking the file size, which should be on the order of 100 MB
 
@@ -101,18 +102,18 @@ groq_tool_assisted_toolbox: list[dict] = [ecmwf_download_tool_schema]
 
 
 Model = Literal[
-    'gemma2-9b-it',
-    'llama-3.3-70b-versatile',
-    'llama-3.1-8b-instant',
-    # 'llama-guard-3-8b', # doesn't support tool calls
-    'llama3-70b-8192',
-    'llama3-8b-8192',
-    # 'allam-2-7b',       # doesn't support tool calls
-    'deepseek-r1-distill-llama-70b',
+    # 'gemma2-9b-it',
+    # 'llama-3.3-70b-versatile',
+    # 'llama-3.1-8b-instant',
+    # ### 'llama-guard-3-8b', # doesn't support tool calls
+    # 'llama3-70b-8192',
+    # 'llama3-8b-8192',
+    # ### 'allam-2-7b',       # doesn't support tool calls
+    # 'deepseek-r1-distill-llama-70b',
     'meta-llama/llama-4-maverick-17b-128e-instruct',
-    'meta-llama/llama-4-scout-17b-16e-instruct',
-    'mistral-saba-24b',
-    'qwen-qwq-32b',
+    # 'meta-llama/llama-4-scout-17b-16e-instruct',
+    # 'mistral-saba-24b',
+    # 'qwen-qwq-32b',
 ]
 
 
@@ -330,14 +331,6 @@ def autograde(workdir: Path, model_name: Model, prompt: str, error: Exception | 
 
 
 if __name__ == '__main__':
-    # plot_all_experiments(here / '../runs/results.json')
-    # exit(0)
-
-    n_trials = 5 #10
-    # groq_benchmark_suite(prompt=BASELINE_TASK_PROMPT, n_trials=n_trials)
-    # hosted_benchmark_suite(prompt=BASELINE_TASK_PROMPT, n_trials=n_trials)
-    groq_benchmark_suite(prompt=TOOL_ASSISTED_TASK_PROMPT, n_trials=n_trials)
-    # hosted_benchmark_suite(prompt=TOOL_ASSISTED_TASK_PROMPT, n_trials=n_trials)
     
     # DEBUG individual test runs
     # groq_benchmark('meta-llama/llama-4-maverick-17b-128e-instruct', groq_baseline_toolbox, BASELINE_TASK_PROMPT)
@@ -345,3 +338,13 @@ if __name__ == '__main__':
 
     # TBD why not working...
     # hosted_benchmark('gemini-1.5-pro', hosted_baseline_toolbox, BASELINE_TASK_PROMPT)
+    
+    # exit(0)
+
+    n_trials = 4 #10
+    # groq_benchmark_suite(prompt=BASELINE_TASK_PROMPT, n_trials=n_trials)
+    # hosted_benchmark_suite(prompt=BASELINE_TASK_PROMPT, n_trials=n_trials)
+    groq_benchmark_suite(prompt=TOOL_ASSISTED_TASK_PROMPT, n_trials=n_trials)
+    # hosted_benchmark_suite(prompt=TOOL_ASSISTED_TASK_PROMPT, n_trials=n_trials)
+    
+    plot_all_experiments(here / '../runs/results.json')

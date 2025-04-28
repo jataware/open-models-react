@@ -83,7 +83,7 @@ ecmwf_download_tool_schema = {
                 },
                 "file_type": {
                     "type": "str",
-                    "description": "Type of the file. Must be one of 'fc', 'ef', 'ep', or 'tf'."
+                    "description": "Type of the file. Must be one of 'fc', 'ef', 'ep', or 'tf', which stand for 'forecast', 'ensemble forecast', 'ensemble probability', and 'trajectory forecast' respectively."
                 },
                 "file_format": {
                     "type": "str",
